@@ -25,25 +25,40 @@ export const DeviceDetail = () => {
     [state.devices, id]
   )
 
-  const fetchDeviceStats = useCallback(async () => {
-    if (!id) return
-    try {
-      const res = await axios.get<TrafficRow[]>(`/api/stats?device_id=${id}&minutes=60`)
-      setDeviceRows(res.data)
+  // src/pages/DeviceDetail.tsx - Update the fetchDeviceStats function
+const fetchDeviceStats = useCallback(async () => {
+  if (!id) return
+  try {
+    const res = await axios.get<TrafficRow[]>(`/api/stats?device_id=${id}&minutes=60`)
+    
+    // Extract domain from top_domains if needed
+    const processedRows = (res.data || []).map((row: any) => {
+      let domain = row.domain || 'unknown'
+      let bytes_in = row.bytes_in || 0
+      let bytes_out = row.bytes_out || 0
       
-      const now = Math.floor(Date.now() / 5000) * 5000
-      const bytes = res.data.reduce((s, r) => s + r.bytes_in + r.bytes_out, 0)
-      throughputBuf.current.set(now, bytes)
-      const cutoff = now - 10 * 60 * 1000
-      for (const [k] of throughputBuf.current) {
-        if (k < cutoff) throughputBuf.current.delete(k)
+      if (row.top_domains && row.top_domains.length > 0 && (!domain || domain === 'unknown')) {
+        const topDomain = row.top_domains[0]
+        domain = topDomain.domain || 'unknown'
+        if (bytes_out === 0 && topDomain.bytes) bytes_out = topDomain.bytes
+        if (bytes_in === 0 && topDomain.bytes) bytes_in = topDomain.bytes
       }
-      setTotalBytes(bytes)
-      setTriggerVal(Date.now())
-    } catch (error) {
-      console.error('Failed to fetch device stats:', error)
-    }
-  }, [id])
+      
+      return {
+        ...row,
+        domain: domain,
+        bytes_in: bytes_in,
+        bytes_out: bytes_out,
+        total_bytes: row.total_bytes || (bytes_in + bytes_out),
+      }
+    })
+    
+    setDeviceRows(processedRows)
+    // ... rest of the code
+  } catch (error) {
+    console.error('Failed to fetch device stats:', error)
+  }
+}, [id])
 
   useEffect(() => {
     fetchDeviceStats()

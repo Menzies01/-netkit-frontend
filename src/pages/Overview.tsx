@@ -49,10 +49,10 @@ export const Overview = () => {
           <div className="text-xs text-gray-500 mb-2 font-medium">TOP APPLICATIONS</div>
           <BandwidthBar data={state.summary} />
         </div>
-        <div className="w-80 p-3">
-          <div className="text-xs text-gray-500 mb-2 font-medium">THROUGHPUT (10 MIN)</div>
-          <ThroughputLine triggerValue={state.lastUpdate} totalBytes={totalBytes} />
-        </div>
+            <div className="w-96 p-3">  {/* Changed from w-80 to w-96 for more width */}
+              <div className="text-xs text-gray-500 mb-2 font-medium">THROUGHPUT (10 MIN)</div>
+              <ThroughputLine triggerValue={state.lastUpdate} totalBytes={totalBytes} />
+            </div>
       </div>
 
       {/* Three-column layout - clean grid */}

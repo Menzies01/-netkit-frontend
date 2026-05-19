@@ -101,4 +101,20 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* Add to src/index.css */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Custom tooltip styles */
+[title] {
+  cursor: help;
+}
+
+/* Better table row hover */
+.hover\:bg-gray-800\/50:hover {
+  background-color: rgba(31, 41, 55, 0.5);
+}
 }
