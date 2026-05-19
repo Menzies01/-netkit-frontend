@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -73,3 +74,7 @@ export default defineConfig([
   },
 ])
 ```
+=======
+# -netkit-frontend
+React dashboard for NetKit network monitor
+>>>>>>> 02dac0e4662219d0fb8a84c925104241f7eaee20
