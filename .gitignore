@@ -1,0 +1,49 @@
+# frontend/.gitignore (Windows-specific)
+
+# Dependencies
+node_modules/
+package-lock.json  # Commit this! Actually, commit package-lock.json
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Windows specific
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# IDE (Windows common)
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Environment (if you use .env for backend URL)
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Misc
+.vite/
+.cache/
