@@ -13,20 +13,16 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   const setDensity = (d: Density) => {
     setDensityState(d)
-    const root = document.documentElement
-    if (d === 'compact') {
-      root.style.setProperty('--row-height', '28px')
-      root.style.setProperty('--row-font', '11px')
-      root.style.setProperty('--row-padding', '4px')
-    } else {
-      root.style.setProperty('--row-height', '44px')
-      root.style.setProperty('--row-font', '13px')
-      root.style.setProperty('--row-padding', '8px')
-    }
+    // Store in localStorage for persistence
+    localStorage.setItem('netkit-density', d)
   }
 
+  // Load saved preference on mount
   useEffect(() => {
-    setDensity('comfortable')
+    const saved = localStorage.getItem('netkit-density') as Density | null
+    if (saved && (saved === 'compact' || saved === 'comfortable')) {
+      setDensityState(saved)
+    }
   }, [])
 
   return (

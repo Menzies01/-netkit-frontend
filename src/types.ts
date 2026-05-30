@@ -27,7 +27,12 @@ export interface TrafficRow {
   bytes_out: number
   total_bytes: number
   last_seen: string | null
-  top_domains?: { domain: string; bytes: number }[]
+  top_domains?: TopDomain[]
+}
+
+export interface TopDomain {
+  domain: string
+  bytes: number
 }
 
 export interface Policy {
@@ -56,4 +61,9 @@ export interface FilterToken {
   field: string | null
   op: '>' | '<' | null
   value: string
+}
+
+export interface ApiError {
+  error: string
+  message?: string
 }

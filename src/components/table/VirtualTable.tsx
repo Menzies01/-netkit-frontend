@@ -1,6 +1,4 @@
-// src/components/table/VirtualTable.tsx
-import React, { memo, useRef, useCallback } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import React, { memo, useState, useCallback } from 'react'
 import { TrafficRow, SortState } from '../../types'
 import { useTheme } from '../../context/ThemeContext'
 import { useAppContext } from '../../context/AppContext'
@@ -14,143 +12,131 @@ interface VirtualTableProps {
   onSort: (col: keyof TrafficRow) => void
 }
 
-export const VirtualTable = memo(({ rows, sort, onSort }: VirtualTableProps) => {
+export const VirtualTable = memo(({ rows = [], sort, onSort }: VirtualTableProps) => {
   const { density } = useTheme()
   const { state, dispatch } = useAppContext()
-  const parentRef = useRef<HTMLDivElement>(null)
-  const rowHeight = density === 'compact' ? 32 : 48
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 5,
-  })
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   const handleSelect = useCallback((row: TrafficRow) => {
     const key = `${row.ip_address}::${row.domain}`
     dispatch({ type: 'SELECT', payload: state.selectedKey === key ? null : key })
   }, [dispatch, state.selectedKey])
 
-  const columns = [
-    { key: 'ip_address' as const, label: 'Device', width: 140, sortable: true },
-    { key: 'domain' as const, label: 'Domain', width: 200, sortable: true }, // Fixed width for domain
-    { key: 'total_bytes' as const, label: 'Total', width: 90, sortable: true, align: 'right' },
-    { key: 'bytes_in' as const, label: '↓ In', width: 80, sortable: true, align: 'right' },
-    { key: 'bytes_out' as const, label: '↑ Out', width: 80, sortable: true, align: 'right' },
-    { key: 'last_seen' as const, label: 'Last Seen', width: 100, sortable: true },
-  ]
+  const getSortIcon = (column: keyof TrafficRow) => {
+    if (sort?.column !== column) return null
+    return sort.direction === 'asc' ? ' ↑' : ' ↓'
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+        No traffic data available
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col h-full bg-gray-950">
-      {/* Header */}
-      <div className="flex items-center bg-gray-900 border-b border-gray-700 text-xs font-medium text-gray-300 sticky top-0 z-10 min-h-[36px]">
-        <div className="w-6 flex-shrink-0" />
-        {columns.map(col => (
-          <div
-            key={col.key}
-            className={`px-3 py-2 ${col.align === 'right' ? 'text-right' : 'text-left'}`}
-            style={{ width: col.width, flexShrink: 0 }}
-          >
-            {col.sortable ? (
-              <button
-                onClick={() => onSort(col.key)}
-                className="hover:text-white transition-colors flex items-center gap-1"
-              >
-                {col.label}
-                {sort?.column === col.key && (
-                  <span className="text-gray-400">{sort.direction === 'asc' ? '↑' : '↓'}</span>
-                )}
-              </button>
-            ) : (
-              col.label
-            )}
-          </div>
-        ))}
-      </div>
+    <div className="w-full overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        {/* Header */}
+        <thead className="bg-gray-900 sticky top-0 z-10">
+          <tr className="border-b border-gray-700">
+            <th className="px-3 py-2 text-left text-gray-400 font-medium w-8">
+              <span className="sr-only">Select</span>
+            </th>
+            <th 
+              className="px-3 py-2 text-left text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('ip_address')}
+            >
+              Device{getSortIcon('ip_address')}
+            </th>
+            <th 
+              className="px-3 py-2 text-left text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('domain')}
+            >
+              Domain{getSortIcon('domain')}
+            </th>
+            <th 
+              className="px-3 py-2 text-right text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('total_bytes')}
+            >
+              Total{getSortIcon('total_bytes')}
+            </th>
+            <th 
+              className="px-3 py-2 text-right text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('bytes_in')}
+            >
+              ↓ In{getSortIcon('bytes_in')}
+            </th>
+            <th 
+              className="px-3 py-2 text-right text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('bytes_out')}
+            >
+              ↑ Out{getSortIcon('bytes_out')}
+            </th>
+            <th 
+              className="px-3 py-2 text-left text-gray-400 font-medium cursor-pointer hover:text-white"
+              onClick={() => onSort('last_seen')}
+            >
+              Last Seen{getSortIcon('last_seen')}
+            </th>
+          </tr>
+        </thead>
 
-      {/* Virtualized rows */}
-      <div ref={parentRef} className="flex-1 overflow-auto">
-        <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
-          {virtualizer.getVirtualItems().map(virtualRow => {
-            const row = rows[virtualRow.index]
-            if (!row) return null
-            
-            const key = `${row.ip_address}::${row.domain}`
-            const selected = state.selectedKey === key
+        {/* Body */}
+        <tbody>
+          {rows.map((row) => {
+            const rowKey = `${row.ip_address}::${row.domain}`
+            const isSelected = state.selectedKey === rowKey
+            const isHovered = hoveredId === rowKey
             const protocolColor = getProtocolColor(row.domain || 'unknown')
-            const isHighTraffic = (row.total_bytes || 0) > 10_000_000
-            const isMediumTraffic = (row.total_bytes || 0) > 1_000_000 && (row.total_bytes || 0) <= 10_000_000
-
-            let borderColor = protocolColor.border
-            if (isHighTraffic) borderColor = '#ef4444'
-            else if (isMediumTraffic) borderColor = '#f59e0b'
-
-            // Get display domain - show full domain, not truncated
-            const displayDomain = row.domain || 'unknown'
-
+            
             return (
-              <div
-                key={key}
+              <tr
+                key={rowKey}
                 onClick={() => handleSelect(row)}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${rowHeight}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-                className={`flex items-center border-b border-gray-800 cursor-pointer transition-colors ${
-                  selected ? 'bg-gray-800' : 'hover:bg-gray-800/50'
+                onMouseEnter={() => setHoveredId(rowKey)}
+                onMouseLeave={() => setHoveredId(null)}
+                className={`border-b border-gray-800 cursor-pointer transition-colors ${
+                  isSelected ? 'bg-gray-800' : isHovered ? 'bg-gray-800/50' : ''
                 }`}
-                style={{ borderLeft: `3px solid ${borderColor}` }}
+                style={{ borderLeft: isSelected ? `3px solid ${protocolColor.border}` : undefined }}
               >
-                {/* Selection indicator */}
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  {selected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                </div>
-
-                {/* Device IP */}
-                <div className="px-3 truncate text-sm font-mono text-gray-300" style={{ width: 140, flexShrink: 0 }}>
-                  {row.hostname || row.ip_address || 'unknown'}
-                </div>
-
-                  <div 
-                    className="px-3 text-sm font-medium truncate" 
-                    style={{ width: 200, flexShrink: 0, color: protocolColor.text }}
-                    title={row.domain}  // Will show actual domain like "HTTPS", "youtube.com", etc.
-                  >
+                <td className="px-3 py-2">
+                  {isSelected && (
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  )}
+                </td>
+                <td className="px-3 py-2 font-mono text-gray-300">
+                  <div className="truncate max-w-[150px]" title={row.hostname || row.ip_address}>
+                    {row.hostname || row.ip_address || 'unknown'}
+                  </div>
+                </td>
+                <td className="px-3 py-2 font-medium" style={{ color: protocolColor.text }}>
+                  <div className="truncate max-w-[200px]" title={row.domain}>
                     {row.domain || 'unknown'}
                   </div>
-
-                {/* Total bytes */}
-                <div className="px-3 text-right font-mono text-sm text-gray-300" style={{ width: 90, flexShrink: 0 }}>
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-gray-300">
                   <ByteDisplay value={row.total_bytes || 0} />
-                </div>
-
-                {/* Bytes In */}
-                <div className="px-3 text-right font-mono text-sm text-emerald-400" style={{ width: 80, flexShrink: 0 }}>
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-emerald-400">
                   <ByteDisplay value={row.bytes_in || 0} />
-                </div>
-
-                {/* Bytes Out */}
-                <div className="px-3 text-right font-mono text-sm text-blue-400" style={{ width: 80, flexShrink: 0 }}>
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-blue-400">
                   <ByteDisplay value={row.bytes_out || 0} />
-                </div>
-
-                {/* Last Seen */}
-                <div className="px-3 text-xs font-mono text-gray-500" style={{ width: 100, flexShrink: 0 }}>
+                </td>
+                <td className="px-3 py-2 font-mono text-gray-500 whitespace-nowrap">
                   {row.last_seen ? formatTimestamp(row.last_seen) : '—'}
-                </div>
-              </div>
+                </td>
+              </tr>
             )
           })}
-        </div>
-      </div>
+        </tbody>
+      </table>
 
       {/* Footer */}
-      <div className="px-3 py-1.5 text-xs text-gray-500 border-t border-gray-800 bg-gray-900/50">
+      <div className="px-3 py-2 text-xs text-gray-500 border-t border-gray-800 bg-gray-900/50">
         {rows.length} flows • Click any row to inspect
       </div>
     </div>

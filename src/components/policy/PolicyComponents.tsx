@@ -6,7 +6,7 @@ import { formatRate } from '../../utils/formatters'
 
 export const PolicyTable = memo(() => {
   const { state } = useAppContext()
-  const { updatePolicy, deletePolicy } = usePolicies()
+  const { updatePolicy, deletePolicy, loading } = usePolicies()
   const [confirmId, setConfirmId] = useState<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout>>()
 
@@ -21,7 +21,19 @@ export const PolicyTable = memo(() => {
     }
   }, [confirmId, deletePolicy])
 
+  const handleToggle = useCallback((id: number, isActive: boolean) => {
+    updatePolicy(id, { is_active: !isActive })
+  }, [updatePolicy])
+
   useEffect(() => () => clearTimeout(timerRef.current), [])
+
+  if (loading && state.policies.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+        Loading policies...
+      </div>
+    )
+  }
 
   if (!state.policies.length) {
     return (
@@ -62,7 +74,7 @@ export const PolicyTable = memo(() => {
             </td>
             <td className="px-3 py-2">
               <button
-                onClick={() => updatePolicy(policy.id, { is_active: !policy.is_active })}
+                onClick={() => handleToggle(policy.id, policy.is_active)}
                 className={`relative w-9 h-5 rounded-full transition-colors ${
                   policy.is_active ? 'bg-green-600' : 'bg-gray-700'
                 }`}
@@ -91,109 +103,222 @@ export const PolicyTable = memo(() => {
 
 PolicyTable.displayName = 'PolicyTable'
 
-interface FormProps { onClose: () => void }
+interface PolicyFormModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess?: () => void
+}
 
-export const PolicyForm = memo(({ onClose }: FormProps) => {
+export const PolicyFormModal = memo(({ isOpen, onClose, onSuccess }: PolicyFormModalProps) => {
   const { state } = useAppContext()
-  const { createPolicy } = usePolicies()
+  const { createPolicy, loading: hookLoading, error: hookError } = usePolicies()
   const [name, setName] = useState('')
   const [deviceIp, setDeviceIp] = useState('')
   const [domain, setDomain] = useState('')
   const [action, setAction] = useState<'limit' | 'block'>('limit')
   const [rateKbps, setRateKbps] = useState(512)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
+  const [localLoading, setLocalLoading] = useState(false)
 
-  const validate = (): boolean => {
+  const loading = localLoading || hookLoading
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setName('')
+      setDeviceIp('')
+      setDomain('')
+      setAction('limit')
+      setRateKbps(512)
+      setErrors({})
+    }
+  }, [isOpen])
+
+  const validate = useCallback((): boolean => {
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = 'Name is required'
     if (action === 'limit' && rateKbps <= 0) e.rate = 'Rate must be positive'
     if (!deviceIp && !domain) e.target = 'Device or Domain required'
     setErrors(e)
     return Object.keys(e).length === 0
-  }
+  }, [name, action, rateKbps, deviceIp, domain])
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!validate()) return
-    setLoading(true)
-    try {
-      await createPolicy({
-        name: name.trim(),
-        device_ip: deviceIp || undefined,
-        domain: domain || undefined,
-        action,
-        rate_kbps: action === 'limit' ? rateKbps : undefined,
-      })
+    setLocalLoading(true)
+    
+    const result = await createPolicy({
+      name: name.trim(),
+      device_ip: deviceIp || null,
+      domain: domain || null,
+      action,
+      rate_kbps: action === 'limit' ? rateKbps : null,
+    })
+    
+    if (result.success) {
+      onSuccess?.()
       onClose()
-    } catch {
-      setErrors({ submit: 'Failed to create policy' })
-    } finally {
-      setLoading(false)
+    } else {
+      setErrors({ submit: result.error || hookError || 'Failed to create policy' })
     }
-  }
+    setLocalLoading(false)
+  }, [validate, createPolicy, name, deviceIp, domain, action, rateKbps, onClose, onSuccess, hookError])
+
+  // Handle escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, onClose])
+
+  // Handle body scroll lock
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isOpen])
+
+  if (!isOpen) return null
 
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-gray-900 border-l border-gray-800 shadow-xl z-50 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <h2 className="font-semibold">New Policy</h2>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-300">✕</button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <div>
-          <label className="text-xs text-gray-400 uppercase block mb-1">Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm" />
-          {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative w-full max-w-md bg-gray-900 rounded-lg shadow-xl border border-gray-700 z-10">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+          <h2 className="font-semibold text-gray-200">Create New Policy</h2>
+          <button 
+            onClick={onClose} 
+            className="text-gray-500 hover:text-gray-300 transition-colors text-xl leading-none"
+          >
+            ×
+          </button>
         </div>
 
-        <div>
-          <label className="text-xs text-gray-400 uppercase block mb-1">Device IP</label>
-          <select value={deviceIp} onChange={e => setDeviceIp(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm">
-            <option value="">All devices</option>
-            {state.devices.map(d => (
-              <option key={d.id} value={d.ip_address}>{d.hostname || d.ip_address}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-xs text-gray-400 uppercase block mb-1">Domain</label>
-          <input value={domain} onChange={e => setDomain(e.target.value)} placeholder="e.g., youtube.com" className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm" />
-        </div>
-
-        <div>
-          <label className="text-xs text-gray-400 uppercase block mb-1">Action</label>
-          <div className="flex gap-3">
-            <label className="flex items-center gap-1">
-              <input type="radio" value="limit" checked={action === 'limit'} onChange={() => setAction('limit')} /> Limit
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" value="block" checked={action === 'block'} onChange={() => setAction('block')} /> Block
-            </label>
-          </div>
-        </div>
-
-        {action === 'limit' && (
+        {/* Body */}
+        <div className="p-5 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
           <div>
-            <label className="text-xs text-gray-400 uppercase block mb-1">Rate (kbps)</label>
-            <input type="number" value={rateKbps} onChange={e => setRateKbps(parseInt(e.target.value, 10))} min={1} className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm" />
-            {errors.rate && <p className="text-xs text-red-400 mt-1">{errors.rate}</p>}
+            <label className="text-xs text-gray-400 uppercase block mb-1 font-medium">Name</label>
+            <input 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+              placeholder="e.g., Throttle YouTube"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+            />
+            {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
           </div>
-        )}
 
-        {(errors.target || errors.submit) && (
-          <p className="text-sm text-red-400 bg-red-900/20 rounded px-2 py-1">{errors.target || errors.submit}</p>
-        )}
-      </div>
+          <div>
+            <label className="text-xs text-gray-400 uppercase block mb-1 font-medium">Device IP (Optional)</label>
+            <select 
+              value={deviceIp} 
+              onChange={e => setDeviceIp(e.target.value)} 
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+            >
+              <option value="">All devices</option>
+              {state.devices.map(d => (
+                <option key={d.id} value={d.ip_address}>{d.hostname || d.ip_address}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Leave empty to apply to all devices</p>
+          </div>
 
-      <div className="px-4 py-3 border-t border-gray-800 flex gap-2">
-        <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-blue-600 hover:bg-blue-700 text-sm py-1.5 rounded transition-colors">
-          {loading ? 'Creating...' : 'Create Policy'}
-        </button>
-        <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200">Cancel</button>
+          <div>
+            <label className="text-xs text-gray-400 uppercase block mb-1 font-medium">Domain (Optional)</label>
+            <input 
+              value={domain} 
+              onChange={e => setDomain(e.target.value)} 
+              placeholder="e.g., youtube.com, netflix.com"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500 transition-colors" 
+            />
+            <p className="text-xs text-gray-500 mt-1">Leave empty to apply to all domains</p>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 uppercase block mb-1 font-medium">Action</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  value="limit" 
+                  checked={action === 'limit'} 
+                  onChange={() => setAction('limit')} 
+                  className="w-3.5 h-3.5"
+                />
+                <span className="text-sm">Limit</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  value="block" 
+                  checked={action === 'block'} 
+                  onChange={() => setAction('block')} 
+                  className="w-3.5 h-3.5"
+                />
+                <span className="text-sm">Block</span>
+              </label>
+            </div>
+          </div>
+
+          {action === 'limit' && (
+            <div>
+              <label className="text-xs text-gray-400 uppercase block mb-1 font-medium">Rate (kbps)</label>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="number" 
+                  value={rateKbps} 
+                  onChange={e => setRateKbps(parseInt(e.target.value, 10) || 0)} 
+                  min={1}
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+                />
+                <span className="text-xs text-gray-500">kbps</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Example: 512 kbps = 64 KB/s</p>
+              {errors.rate && <p className="text-xs text-red-400 mt-1">{errors.rate}</p>}
+            </div>
+          )}
+
+          {(errors.target || errors.submit) && (
+            <div className="p-2 bg-red-900/30 border border-red-700 rounded text-red-300 text-xs">
+              {errors.target || errors.submit}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-800">
+          <button 
+            onClick={onClose} 
+            className="px-4 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={handleSubmit} 
+            disabled={loading}
+            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Creating...' : 'Create Policy'}
+          </button>
+        </div>
       </div>
     </div>
   )
 })
 
-PolicyForm.displayName = 'PolicyForm'
+PolicyFormModal.displayName = 'PolicyFormModal'

@@ -1,10 +1,14 @@
-import React, { memo } from 'react'
+import React, { memo, useMemo } from 'react'
 import { TrafficRow } from '../../types'
-import { formatBytes } from '../../utils/formatters'
+import { formatBytes, formatTimestamp } from '../../utils/formatters'
 
 interface Props { row: TrafficRow | null }
 
 export const DetailPane = memo(({ row }: Props) => {
+  const hasTopDomains = useMemo(() => {
+    return row?.top_domains && row.top_domains.length > 0
+  }, [row])
+
   if (!row) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -13,6 +17,9 @@ export const DetailPane = memo(({ row }: Props) => {
     )
   }
 
+  // Determine if this is a device aggregate row or a domain-level row
+  const isDeviceAggregate = row.domain === 'all' || (hasTopDomains && row.top_domains && row.top_domains.length > 0)
+
   return (
     <div className="h-full overflow-y-auto p-3 space-y-4">
       {/* Endpoint info */}
@@ -20,8 +27,13 @@ export const DetailPane = memo(({ row }: Props) => {
         <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Endpoint</div>
         <div className="bg-gray-900 rounded p-3 space-y-1">
           <div className="text-sm font-mono text-blue-400">{row.ip_address}</div>
-          <div className="text-sm">{row.domain}</div>
+          <div className="text-sm break-all">{row.domain !== 'all' ? row.domain : 'All Domains'}</div>
           {row.hostname && <div className="text-xs text-gray-500">{row.hostname}</div>}
+          {row.last_seen && (
+            <div className="text-xs text-gray-500 mt-1">
+              Last seen: {formatTimestamp(row.last_seen)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -44,53 +56,58 @@ export const DetailPane = memo(({ row }: Props) => {
         </div>
       </div>
 
-      {/* Layer tree */}
+      {/* Top domains (for device aggregate rows) */}
+      {hasTopDomains && (
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Top Domains</div>
+          <div className="bg-gray-900 rounded divide-y divide-gray-800">
+            {row.top_domains!.slice(0, 5).map((td, idx) => (
+              <div key={idx} className="flex justify-between items-center px-3 py-2 text-xs">
+                <span className="font-mono text-gray-300 truncate max-w-[150px]">{td.domain}</span>
+                <span className="text-gray-500">{formatBytes(td.bytes)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Layer information - now accurate based on available data */}
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Layers</div>
+        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Analysis</div>
         
-        <details className="bg-gray-900 rounded">
-          <summary className="px-3 py-2 cursor-pointer hover:bg-gray-800 text-sm font-medium">
-            Network Layer
-          </summary>
-          <div className="px-3 pb-2 space-y-1 text-xs">
+        <div className="bg-gray-900 rounded">
+          <div className="px-3 py-2 text-sm font-medium border-b border-gray-800">
+            Network Information
+          </div>
+          <div className="px-3 py-2 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-gray-500">Source IP</span>
+              <span className="text-gray-500">Source/Destination</span>
               <span className="font-mono">{row.ip_address}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Destination</span>
-              <span className="text-gray-400">DNS Resolved</span>
-            </div>
+            {row.domain !== 'all' && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Domain</span>
+                <span className="text-gray-300 truncate max-w-[200px]">{row.domain}</span>
+              </div>
+            )}
           </div>
-        </details>
+        </div>
 
-        <details className="bg-gray-900 rounded">
-          <summary className="px-3 py-2 cursor-pointer hover:bg-gray-800 text-sm font-medium">
-            Transport Layer
-          </summary>
-          <div className="px-3 pb-2 space-y-1 text-xs">
+        <div className="bg-gray-900 rounded">
+          <div className="px-3 py-2 text-sm font-medium border-b border-gray-800">
+            Traffic Classification
+          </div>
+          <div className="px-3 py-2 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-gray-500">Protocol</span>
-              <span>TCP</span>
+              <span className="text-gray-500">Data Source</span>
+              <span>{isDeviceAggregate ? 'Device Aggregate' : 'Domain-level Flow'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Last Updated</span>
+              <span>{row.last_seen ? formatTimestamp(row.last_seen) : 'Real-time'}</span>
             </div>
           </div>
-        </details>
-
-        <details className="bg-gray-900 rounded">
-          <summary className="px-3 py-2 cursor-pointer hover:bg-gray-800 text-sm font-medium">
-            Application Layer
-          </summary>
-          <div className="px-3 pb-2 space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Domain</span>
-              <span>{row.domain}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Detection</span>
-              <span className="text-gray-400">DNS / TLS SNI</span>
-            </div>
-          </div>
-        </details>
+        </div>
       </div>
     </div>
   )

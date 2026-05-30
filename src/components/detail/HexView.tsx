@@ -1,15 +1,17 @@
 import React, { memo, useMemo, useState } from 'react'
 import { TrafficRow } from '../../types'
 
-interface Props { row: TrafficRow }
+interface Props { row: TrafficRow | null }
 
 export const HexView = memo(({ row }: Props) => {
   const [activeField, setActiveField] = useState<string | null>(null)
 
   const hexLines = useMemo(() => {
+    if (!row) return []
+
     const data = [
       { label: 'IP', value: row.ip_address },
-      { label: 'Domain', value: row.domain },
+      { label: 'Domain', value: row.domain || 'unknown' },
       { label: 'Bytes In', value: row.bytes_in.toString() },
       { label: 'Bytes Out', value: row.bytes_out.toString() },
       { label: 'Total', value: row.total_bytes.toString() },
@@ -45,6 +47,14 @@ export const HexView = memo(({ row }: Props) => {
     return lines
   }, [row])
 
+  if (!row || !hexLines.length) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+        Select a row to view hex dump
+      </div>
+    )
+  }
+
   const fieldColors: Record<string, string> = {
     IP: '#3B82F6',
     Domain: '#10B981',
@@ -55,7 +65,6 @@ export const HexView = memo(({ row }: Props) => {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Field legend */}
       <div className="flex flex-wrap gap-1 p-2 border-b border-gray-800">
         {Object.entries(fieldColors).map(([field, color]) => (
           <button
@@ -71,7 +80,6 @@ export const HexView = memo(({ row }: Props) => {
         ))}
       </div>
 
-      {/* Hex grid */}
       <div className="flex-1 overflow-auto p-2 font-mono text-xs">
         {hexLines.map((line, idx) => (
           <div key={idx} className="flex gap-3 py-0.5">

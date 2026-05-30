@@ -27,6 +27,17 @@ export const Sidebar = memo(() => (
     >
       ⚡
     </NavLink>
+    <NavLink
+      to="/quotas"
+      className={({ isActive }) =>
+        `w-8 h-8 flex items-center justify-center rounded transition-colors ${
+          isActive ? 'bg-gray-800 text-blue-400' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+        }`
+      }
+      title="Quotas"
+    >
+      📊
+    </NavLink>
   </nav>
 ))
 

@@ -17,16 +17,36 @@ export const parseQuery = (query: string): FilterToken[] => {
   })
 }
 
-// ✅ Safe string comparison - handles null/undefined
+// Safe string comparison - handles null/undefined
 const safeToLowerCase = (str: string | null | undefined): string => {
   if (!str) return ''
   return str.toLowerCase()
 }
 
-// ✅ Safe includes check
+// Safe includes check
 const safeIncludes = (str: string | null | undefined, search: string): boolean => {
   if (!str) return false
   return safeToLowerCase(str).includes(safeToLowerCase(search))
+}
+
+// Extract protocol from domain or use domain as fallback
+const getProtocolFromRow = (row: TrafficRow): string => {
+  if (!row.domain) return ''
+  const domain = row.domain.toLowerCase()
+  
+  // Common protocol mappings based on typical ports or patterns
+  if (domain.includes('https') || domain.includes('ssl') || domain.includes(':443')) return 'HTTPS'
+  if (domain.includes('http') || domain.includes(':80')) return 'HTTP'
+  if (domain.includes('dns') || domain.includes(':53')) return 'DNS'
+  if (domain.includes('ssh') || domain.includes(':22')) return 'SSH'
+  if (domain.includes('smtp') || domain.includes(':25') || domain.includes(':587')) return 'SMTP'
+  if (domain.includes('pop3') || domain.includes(':110')) return 'POP3'
+  if (domain.includes('imap') || domain.includes(':143') || domain.includes(':993')) return 'IMAP'
+  if (domain.includes('ftp') || domain.includes(':21')) return 'FTP'
+  if (domain.includes('telnet') || domain.includes(':23')) return 'TELNET'
+  
+  // If no protocol pattern found, return the domain itself
+  return domain
 }
 
 const matchesFilter = (row: TrafficRow, token: FilterToken): boolean => {
@@ -53,9 +73,9 @@ const matchesFilter = (row: TrafficRow, token: FilterToken): boolean => {
       
     case 'proto':
     case 'protocol': {
-      if (!row.domain) return false
-      const proto = row.domain.toUpperCase()
-      return proto.includes(token.value.toUpperCase())
+      const protocol = getProtocolFromRow(row)
+      if (!protocol) return false
+      return protocol.includes(token.value.toLowerCase())
     }
     
     case 'bytes': {
@@ -103,16 +123,34 @@ export const applyFilter = (
     return []
   }
   
+  // Early exit for empty rows
+  if (rows.length === 0) {
+    return []
+  }
+  
   const tokens = parseQuery(query)
   
   // If no filter tokens, just sort and return
-  let filtered = tokens.length === 0 
-    ? rows 
-    : rows.filter(row => {
-        // Safety check for row
-        if (!row) return false
-        return tokens.every(token => matchesFilter(row, token))
-      })
+  let filtered = rows
+  if (tokens.length > 0) {
+    // Use standard for loop for better performance with large datasets
+    filtered = []
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row) continue
+      
+      let matches = true
+      for (let j = 0; j < tokens.length; j++) {
+        if (!matchesFilter(row, tokens[j])) {
+          matches = false
+          break // Early exit on first non-match
+        }
+      }
+      if (matches) {
+        filtered.push(row)
+      }
+    }
+  }
   
   return sortRows(filtered, sort)
 }
