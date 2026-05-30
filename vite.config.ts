@@ -11,11 +11,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://192.168.0.195:5000',
+        target: 'http://192.168.0.150:5000',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://192.168.0.195:5000',
+        target: 'http://192.168.0.150:5000',
         changeOrigin: true,
         ws: true,
       },
