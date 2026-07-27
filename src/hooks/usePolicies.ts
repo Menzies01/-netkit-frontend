@@ -1,20 +1,12 @@
 import { useCallback, useState } from 'react'
 import axios, { AxiosError } from 'axios'
 import { useAppContext } from '../context/AppContext'
-import { Policy, ApiError } from '../types'
-
-interface CreatePolicyBody {
-  name: string
-  device_ip: string | null
-  domain: string | null
-  action: 'limit' | 'block'
-  rate_kbps: number | null
-}
+import { Policy, CreatePolicyData, UpdatePolicyData, ApiError } from '../types'
 
 interface UsePoliciesReturn {
   fetchPolicies: () => Promise<void>
-  createPolicy: (body: CreatePolicyBody) => Promise<{ success: boolean; error?: string }>
-  updatePolicy: (id: number, body: Partial<Policy>) => Promise<{ success: boolean; error?: string }>
+  createPolicy: (body: CreatePolicyData) => Promise<{ success: boolean; error?: string }>
+  updatePolicy: (id: number, body: UpdatePolicyData) => Promise<{ success: boolean; error?: string }>
   deletePolicy: (id: number) => Promise<{ success: boolean; error?: string }>
   loading: boolean
   error: string | null
@@ -41,11 +33,42 @@ export const usePolicies = (): UsePoliciesReturn => {
     }
   }, [dispatch])
 
-  const createPolicy = useCallback(async (body: CreatePolicyBody): Promise<{ success: boolean; error?: string }> => {
+  const createPolicy = useCallback(async (body: CreatePolicyData): Promise<{ success: boolean; error?: string }> => {
     setLoading(true)
     setError(null)
     try {
-      await axios.post<Policy>('/api/policies', body)
+      const requestBody: Record<string, unknown> = {
+        name: body.name,
+        action: body.action,
+      }
+
+      if (body.device_mac) {
+        requestBody.device_mac = body.device_mac
+      } else if (body.device_ip) {
+        requestBody.device_ip = body.device_ip
+      }
+
+      if (body.domain) requestBody.domain = body.domain
+      if (body.rate_kbps !== undefined && body.rate_kbps !== null) requestBody.rate_kbps = body.rate_kbps
+      if (body.description) requestBody.description = body.description
+
+      // Priority fields - CRITICAL
+      if (body.priority_level) {
+        requestBody.priority_level = body.priority_level
+      }
+      if (body.min_bandwidth_kbps !== undefined) {
+        requestBody.min_bandwidth_kbps = body.min_bandwidth_kbps
+      }
+      if (body.max_bandwidth_kbps !== undefined) {
+        requestBody.max_bandwidth_kbps = body.max_bandwidth_kbps
+      }
+      if (body.burst_kb !== undefined) {
+        requestBody.burst_kb = body.burst_kb
+      }
+
+      console.log('Creating policy with body:', requestBody)
+
+      await axios.post<Policy>('/api/policies', requestBody)
       await fetchPolicies()
       return { success: true }
     } catch (err) {
@@ -59,11 +82,25 @@ export const usePolicies = (): UsePoliciesReturn => {
     }
   }, [fetchPolicies])
 
-  const updatePolicy = useCallback(async (id: number, body: Partial<Policy>): Promise<{ success: boolean; error?: string }> => {
+  const updatePolicy = useCallback(async (id: number, body: UpdatePolicyData): Promise<{ success: boolean; error?: string }> => {
     setLoading(true)
     setError(null)
     try {
-      await axios.put(`/api/policies/${id}`, body)
+      const updatePayload: Record<string, unknown> = {}
+
+      if (body.name !== undefined) updatePayload.name = body.name
+      if (body.description !== undefined) updatePayload.description = body.description
+      if (body.device_mac !== undefined) updatePayload.device_mac = body.device_mac
+      if (body.device_ip !== undefined) updatePayload.device_ip = body.device_ip
+      if (body.domain !== undefined) updatePayload.domain = body.domain
+      if (body.action !== undefined) updatePayload.action = body.action
+      if (body.rate_kbps !== undefined) updatePayload.rate_kbps = body.rate_kbps
+      if (body.is_active !== undefined) updatePayload.is_active = body.is_active
+      if (body.priority_level !== undefined) updatePayload.priority_level = body.priority_level
+      if (body.min_bandwidth_kbps !== undefined) updatePayload.min_bandwidth_kbps = body.min_bandwidth_kbps
+      if (body.max_bandwidth_kbps !== undefined) updatePayload.max_bandwidth_kbps = body.max_bandwidth_kbps
+
+      await axios.put(`/api/policies/${id}`, updatePayload)
       await fetchPolicies()
       return { success: true }
     } catch (err) {

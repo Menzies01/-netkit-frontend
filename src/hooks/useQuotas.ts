@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react'
 import axios, { AxiosError } from 'axios'
-import { DataQuota, QuotaUsage, CreateQuotaBody, ApiError } from '../types'
+import { DataQuota, QuotaUsage, CreateQuotaData, UpdateQuotaData, ApiError } from '../types'
 
 interface UseQuotasReturn {
   quotas: DataQuota[]
   fetchQuotas: () => Promise<{ success: boolean; error?: string }>
   fetchQuotaUsage: (id: number) => Promise<QuotaUsage | null>
-  createQuota: (body: CreateQuotaBody) => Promise<{ success: boolean; data?: DataQuota; error?: string }>
-  updateQuota: (id: number, body: Partial<CreateQuotaBody & { is_active: boolean }>) => Promise<{ success: boolean; error?: string }>
+  createQuota: (body: CreateQuotaData) => Promise<{ success: boolean; data?: DataQuota; error?: string }>
+  updateQuota: (id: number, body: UpdateQuotaData) => Promise<{ success: boolean; error?: string }>
   resetQuota: (id: number) => Promise<{ success: boolean; error?: string }>
   deleteQuota: (id: number) => Promise<{ success: boolean; error?: string }>
   loading: boolean
@@ -43,17 +43,38 @@ export const useQuotas = (): UseQuotasReturn => {
       return res.data
     } catch (err) {
       const axiosError = err as AxiosError<ApiError>
-      const errorMsg = axiosError.response?.data?.error || axiosError.message || 'Failed to fetch quota usage'
       console.error('Failed to fetch quota usage:', err)
       return null
     }
   }, [])
 
-  const createQuota = useCallback(async (body: CreateQuotaBody): Promise<{ success: boolean; data?: DataQuota; error?: string }> => {
+  const createQuota = useCallback(async (body: CreateQuotaData): Promise<{ success: boolean; data?: DataQuota; error?: string }> => {
     setLoading(true)
     setError(null)
     try {
-      const res = await axios.post<DataQuota>('/api/quotas', body)
+      const requestBody: Record<string, unknown> = {
+        name: body.name,
+        domain: body.domain,
+      }
+      
+      // Prefer device_mac, fallback to device_ip
+      if (body.device_mac) {
+        requestBody.device_mac = body.device_mac
+      } else if (body.device_ip) {
+        requestBody.device_ip = body.device_ip
+      }
+      
+      if (body.limit_gb !== undefined) {
+        requestBody.limit_gb = body.limit_gb
+      } else if (body.limit_bytes !== undefined) {
+        requestBody.limit_bytes = body.limit_bytes
+      }
+      
+      if (body.reset_period) {
+        requestBody.reset_period = body.reset_period
+      }
+      
+      const res = await axios.post<DataQuota>('/api/quotas', requestBody)
       await fetchQuotas()
       return { success: true, data: res.data }
     } catch (err) {
@@ -67,11 +88,22 @@ export const useQuotas = (): UseQuotasReturn => {
     }
   }, [fetchQuotas])
 
-  const updateQuota = useCallback(async (id: number, body: Partial<CreateQuotaBody & { is_active: boolean }>): Promise<{ success: boolean; error?: string }> => {
+  const updateQuota = useCallback(async (id: number, body: UpdateQuotaData): Promise<{ success: boolean; error?: string }> => {
     setLoading(true)
     setError(null)
     try {
-      await axios.put(`/api/quotas/${id}`, body)
+      const updatePayload: Record<string, unknown> = {}
+      
+      if (body.name !== undefined) updatePayload.name = body.name
+      if (body.device_mac !== undefined) updatePayload.device_mac = body.device_mac
+      if (body.device_ip !== undefined) updatePayload.device_ip = body.device_ip
+      if (body.domain !== undefined) updatePayload.domain = body.domain
+      if (body.limit_gb !== undefined) updatePayload.limit_gb = body.limit_gb
+      if (body.limit_bytes !== undefined) updatePayload.limit_bytes = body.limit_bytes
+      if (body.reset_period !== undefined) updatePayload.reset_period = body.reset_period
+      if (body.is_active !== undefined) updatePayload.is_active = body.is_active
+      
+      await axios.put(`/api/quotas/${id}`, updatePayload)
       await fetchQuotas()
       return { success: true }
     } catch (err) {

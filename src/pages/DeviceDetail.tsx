@@ -8,7 +8,7 @@ import { ThroughputLine } from '../components/charts/ThroughputLine'
 import { VirtualTable } from '../components/table/VirtualTable'
 import { DetailPane } from '../components/detail/DetailPane'
 import { ByteDisplay } from '../components/shared/ByteDisplay'
-import { TrafficRow, SortState } from '../types'
+import { TrafficRow, SortState, getDeviceDisplayName, formatMacAddress } from '../types'
 import { formatTimestamp } from '../utils/formatters'
 
 export const DeviceDetail = () => {
@@ -25,40 +25,54 @@ export const DeviceDetail = () => {
     [state.devices, id]
   )
 
-  // src/pages/DeviceDetail.tsx - Update the fetchDeviceStats function
-const fetchDeviceStats = useCallback(async () => {
-  if (!id) return
-  try {
-    const res = await axios.get<TrafficRow[]>(`/api/stats?device_id=${id}&minutes=60`)
-    
-    // Extract domain from top_domains if needed
-    const processedRows = (res.data || []).map((row: any) => {
-      let domain = row.domain || 'unknown'
-      let bytes_in = row.bytes_in || 0
-      let bytes_out = row.bytes_out || 0
+  const getDeviceKey = useCallback((ipAddress: string): string => {
+    const device = state.devices.find(d => d.ip_address === ipAddress)
+    return device?.mac_address || ipAddress
+  }, [state.devices])
+
+  const fetchDeviceStats = useCallback(async () => {
+    if (!id) return
+    try {
+      const res = await axios.get<TrafficRow[]>(`/api/stats?device_id=${id}&minutes=60`)
       
-      if (row.top_domains && row.top_domains.length > 0 && (!domain || domain === 'unknown')) {
-        const topDomain = row.top_domains[0]
-        domain = topDomain.domain || 'unknown'
-        if (bytes_out === 0 && topDomain.bytes) bytes_out = topDomain.bytes
-        if (bytes_in === 0 && topDomain.bytes) bytes_in = topDomain.bytes
-      }
+      const processedRows = (res.data || []).map((row: any) => {
+        let domain = row.domain || 'unknown'
+        let bytes_in = row.bytes_in || 0
+        let bytes_out = row.bytes_out || 0
+        
+        if (row.top_domains && row.top_domains.length > 0 && (!domain || domain === 'unknown')) {
+          const topDomain = row.top_domains[0]
+          domain = topDomain.domain || 'unknown'
+          if (bytes_out === 0 && topDomain.bytes) bytes_out = topDomain.bytes
+          if (bytes_in === 0 && topDomain.bytes) bytes_in = topDomain.bytes
+        }
+        
+        return {
+          ...row,
+          domain: domain,
+          bytes_in: bytes_in,
+          bytes_out: bytes_out,
+          total_bytes: row.total_bytes || (bytes_in + bytes_out),
+        }
+      })
       
-      return {
-        ...row,
-        domain: domain,
-        bytes_in: bytes_in,
-        bytes_out: bytes_out,
-        total_bytes: row.total_bytes || (bytes_in + bytes_out),
-      }
-    })
-    
-    setDeviceRows(processedRows)
-    // ... rest of the code
-  } catch (error) {
-    console.error('Failed to fetch device stats:', error)
-  }
-}, [id])
+      setDeviceRows(processedRows)
+      
+      const newMap = new Map<number, number>()
+      let total = 0
+      processedRows.forEach(row => {
+        total += row.total_bytes || 0
+        const ts = new Date(row.last_seen || Date.now()).getTime()
+        const existing = newMap.get(ts) || 0
+        newMap.set(ts, existing + (row.total_bytes || 0))
+      })
+      throughputBuf.current = newMap
+      setTriggerVal(prev => prev + 1)
+      setTotalBytes(total)
+    } catch (error) {
+      console.error('Failed to fetch device stats:', error)
+    }
+  }, [id])
 
   useEffect(() => {
     fetchDeviceStats()
@@ -76,21 +90,36 @@ const fetchDeviceStats = useCallback(async () => {
 
   const selectedRow = useMemo(() => {
     if (!state.selectedKey) return null
-    const [ip, domain] = state.selectedKey.split('::')
-    return deviceRows.find(r => r.ip_address === ip && r.domain === domain) ?? null
-  }, [state.selectedKey, deviceRows])
+    const [deviceIdentifier, domain] = state.selectedKey.split('::')
+    const found = deviceRows.find(row => {
+      const rowDeviceKey = getDeviceKey(row.ip_address)
+      return rowDeviceKey === deviceIdentifier && row.domain === domain
+    })
+    return found ?? null
+  }, [state.selectedKey, deviceRows, getDeviceKey])
 
   if (!device) {
     return <div className="flex items-center justify-center h-full">Device not found</div>
   }
+
+  const deviceDisplayName = getDeviceDisplayName(device)
+  const macDisplay = device.mac_address ? formatMacAddress(device.mac_address) : null
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-950">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-800 bg-gray-900">
         <Link to="/" className="text-gray-500 hover:text-gray-300 text-sm">← Back</Link>
         <div>
-          <div className="font-semibold">{device.hostname || `Device ${id}`}</div>
-          <div className="text-xs text-gray-500 font-mono">{device.ip_address}</div>
+          <div className="font-semibold">
+            {deviceDisplayName}
+          </div>
+          <div className="text-xs text-gray-500 font-mono">
+            {macDisplay ? (
+              <>MAC: {macDisplay} • IP: {device.ip_address}</>
+            ) : (
+              <>IP: {device.ip_address}{!device.hostname && ' (No MAC recorded)'}</>
+            )}
+          </div>
         </div>
         <div className="ml-auto flex gap-4 text-sm">
           <div>
